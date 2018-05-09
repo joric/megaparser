@@ -9,20 +9,11 @@ db_fields = []
 counter = 0
 total = 0
 
-def db_format(var, s):
-#    s = asciify(s)
-    if var == "cldc":
-        s = "CLDC/" + s
-    if var == "midp":
-        s = "MIDP/" + s
-    return s    
-  
 def dump_db():
-    w = csv.DictWriter(sys.stdout, fieldnames=db_fields)
-#    w.writeheader()
+    w = csv.DictWriter(sys.stdout, fieldnames=db_fields, delimiter='\t')
+    w.writeheader()
     for row in db:
         w.writerow(row)
-#        print row
 
 def asciify(s):
     s = s.decode("utf-8")
@@ -75,7 +66,7 @@ def get_keys(reg, text):
                 keys.append(k)
     return keys
 
-def get_values(conf, sec, text, url):
+def get_values(conf, sec, text, url, param=''):
     global db_fields
     res = {}
     for var in db_fields:
@@ -84,13 +75,12 @@ def get_values(conf, sec, text, url):
         if reg:
             for m in re.finditer(reg, text, re.MULTILINE | re.DOTALL):
                 if m and len(m.groups()):
-                    #print text[m.start():m.end()], "=>", s #debug
                     val = m.group(1)
-                    #print val.decode('utf-8').encode('cp866')
                     val = val.replace('\n','\\n')
-                    #sys.stderr.write("%s\n" % val)
                     vals.append(val)
                 res[var] = val
+        if '$1' in reg:
+            res[var] = param
     if res:
         for var in db_fields:
             if var not in res.keys():
@@ -106,38 +96,34 @@ def get_fields(conf, sec):
             res.append(i[0])
     return res
 
-def process(conf, sec, text, parent, url):
+def process(conf, sec, text, parent, url, param=''):
     global db_fields
     global total
-    get_values(conf, sec, text, url)
+    get_values(conf, sec, text, url, param)
     reg = get_var(conf, sec, "param")
     if reg:
         keys = get_keys(reg, text)
         total += len(keys)
         sec = get_var(conf, sec, "template")
         if sec:
-            db_fields = get_fields(conf, sec)
+            dbf = get_fields(conf, sec)
+            db_fields = dbf if len(dbf) else db_fields
             for key in keys:
                 parse(conf, sec, key, parent)
 
 def parse(conf, sec, key="index", parent=""):
     global db_fields
-
     if parent == "":
         parent = sec
-
     url = get_var(conf, sec, "url").replace("$1", key)
-
-    text = get_page(parent, url, key) 
-
+    text = get_page(parent, url, sec+'_'+key) 
     alias = get_var(conf, sec, "alias")
-
     if alias:
         process(conf, alias, text, parent, url)
-        db_fields = get_fields(conf, alias)
+        dbf = get_fields(conf, alias)
+        db_fields = dbf if len(dbf) else db_fields
         get_values(conf, sec, text, url)
-
-    process(conf, sec, text, parent, url)
+    process(conf, sec, text, parent, url, key)
 
 if __name__ == '__main__':
     conf = ConfigParser()
