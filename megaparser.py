@@ -1,8 +1,11 @@
-from ConfigParser import ConfigParser
-import urllib2
+#!/usr/bin/env python3
+
+import configparser
+import urllib.request
 import csv
 import sys
 import re
+import os
 
 db = []
 db_fields = []
@@ -16,7 +19,6 @@ def dump_db():
         w.writerow(row)
 
 def asciify(s):
-    s = s.decode("utf-8")
     s = s.replace(u"\u2013", "-")
     s = re.sub("[^\x20-\x7F]"," ", s)
     s = re.sub(" +"," ", s)
@@ -27,29 +29,28 @@ def tagify(s):
     s = re.sub("[^a-zA-Z0-9-]","_", s)
     return s
 
-def get_page(section, url, key):
+def get_page(section, url, key, enc):
     global counter, total
     fname = "download/%s/%s.html" % (section, tagify(key))
-    try:
-        text = file(fname).read()
-    except:
+    if os.path.exists(fname):
+        buf = open(fname,'rb').read()
+    else:
         sys.stderr.write("%s\nDownloading page %d of %d...\n" % (url, counter, total))
-        text = wget(url, fname)   
+        buf = wget(url, fname)
     counter += 1
-    return text
+    return buf.decode(enc)
 
 def wget(url, fname):
-    import os
-    req = urllib2.Request(url, None, {'User-Agent':'megaparser'})
-    response = urllib2.urlopen(req)
-    text = response.read()
+    req = urllib.request.Request(url, None, {'User-Agent':'megaparser'})
+    response = urllib.request.urlopen(req)
+    buf = response.read()
     d = os.path.dirname(fname)
     if not os.path.exists(d):
         os.makedirs(d)
     fp = open(fname, "wb")
-    fp.write(text)
+    fp.write(buf)
     fp.close()
-    return text
+    return buf
 
 def get_var(conf, sec, var):
     try:
@@ -92,7 +93,7 @@ def get_values(conf, sec, text, url, param=''):
 def get_fields(conf, sec):
     res = []
     for i in conf.items(sec):
-        if i[0] not in ["url", "param", "template", "alias"]:
+        if i[0] not in ["url", "param", "template", "alias", "encoding"]:
             res.append(i[0])
     return res
 
@@ -115,8 +116,9 @@ def parse(conf, sec, key="index", parent=""):
     global db_fields
     if parent == "":
         parent = sec
+    enc = get_var(conf, sec, 'encoding') or 'utf-8'
     url = get_var(conf, sec, "url").replace("$1", key)
-    text = get_page(parent, url, sec+'_'+key) 
+    text = get_page(parent, url, sec+'_'+key, enc)
     alias = get_var(conf, sec, "alias")
     if alias:
         process(conf, alias, text, parent, url)
@@ -126,8 +128,8 @@ def parse(conf, sec, key="index", parent=""):
     process(conf, sec, text, parent, url, key)
 
 if __name__ == '__main__':
-    conf = ConfigParser()
-    conf.read("megaparser.ini")
+    conf =  configparser.ConfigParser()
+    conf.read("megaparser.ini", encoding='utf-8')
     section = get_var(conf, "settings", "default")
     parse(conf, section)
     dump_db()
