@@ -6,14 +6,18 @@ import csv
 import sys
 import re
 import os
+from collections import defaultdict
 
 db = []
 db_fields = []
 counter = 0
 total = 0
 
-def dump_db():
-    w = csv.DictWriter(sys.stdout, fieldnames=db_fields, delimiter='\t')
+def dump_db(section):
+    fname = section + '.csv'
+    f = open(fname, 'w', encoding='utf-8')
+    print('writing', fname)
+    w = csv.DictWriter(f, fieldnames=db_fields, delimiter='\t')
     w.writeheader()
     for row in db:
         w.writerow(row)
@@ -69,26 +73,30 @@ def get_keys(reg, text):
 
 def get_values(conf, sec, text, url, param=''):
     global db_fields
-    res = {}
+    res = defaultdict(dict)
+
     for var in db_fields:
         reg = get_var(conf, sec, var)
         vals = []
         if reg:
+            i = 0
             for m in re.finditer(reg, text, re.MULTILINE | re.DOTALL):
                 if m and len(m.groups()):
                     val = m.group(1)
                     val = val.replace('\n','\\n')
                     vals.append(val)
-                res[var] = val
-        if '$1' in reg:
-            res[var] = param
+                    res[i][var] = val
+                    i += 1
+                if '$1' in reg:
+                    res[i][var] = param
     if res:
-        for var in db_fields:
-            if var not in res.keys():
-                res[var] = ""
-        if "url" in db_fields:
-            res["url"] = url
-        db.append(res)
+        for k,v in res.items():
+            for var in db_fields:
+                if var not in v.keys():
+                    v[var] = ""
+            if "url" in db_fields:
+                v["url"] = url
+            db.append(v)
 
 def get_fields(conf, sec):
     res = []
@@ -121,10 +129,10 @@ def parse(conf, sec, key="index", parent=""):
     text = get_page(parent, url, sec+'_'+key, enc)
     alias = get_var(conf, sec, "alias")
     if alias:
-        process(conf, alias, text, parent, url)
         dbf = get_fields(conf, alias)
         db_fields = dbf if len(dbf) else db_fields
         get_values(conf, sec, text, url)
+        process(conf, alias, text, parent, url)
     process(conf, sec, text, parent, url, key)
 
 if __name__ == '__main__':
@@ -132,4 +140,4 @@ if __name__ == '__main__':
     conf.read("megaparser.ini", encoding='utf-8')
     section = get_var(conf, "settings", "default")
     parse(conf, section)
-    dump_db()
+    dump_db(section)
